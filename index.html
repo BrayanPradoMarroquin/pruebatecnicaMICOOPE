@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pastelería - CRUD de Pasteles con Ingredientes</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body { background: #fef7e8; margin: 0; padding: 20px; }
+        .container { max-width: 1300px; margin: auto; background: white; padding: 20px; border-radius: 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        h1 { color: #b45f2b; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #f0e0c0; }
+        .tab { padding: 10px 20px; cursor: pointer; background: #f9f0e0; border-radius: 20px 20px 0 0; }
+        .tab.active { background: #b45f2b; color: white; }
+        .card { background: #fff7ef; padding: 20px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        input, textarea, select { width: 100%; padding: 10px; margin: 5px 0 15px; border: 1px solid #e0c8a8; border-radius: 12px; }
+        button { background: #b45f2b; color: white; border: none; padding: 8px 18px; border-radius: 30px; cursor: pointer; margin-right: 8px; }
+        button.danger { background: #c0392b; }
+        button.secondary { background: #7f8c8d; }
+        .ingredient-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .ingredient-row select { flex: 2; }
+        .ingredient-row input { flex: 1; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #f0dbc0; }
+        .badge { background: #f0dbc0; border-radius: 30px; padding: 4px 12px; font-size: 0.8rem; }
+        .actions { white-space: nowrap; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="container">
+        <h1>🍰 Pastelería - Gestión de Pasteles e Ingredientes</h1>
+
+        <!-- Pestañas -->
+        <div class="tabs">
+            <div class="tab" :class="{active: activeTab === 'pasteles'}" @click="activeTab='pasteles'">📋 Pasteles</div>
+            <div class="tab" :class="{active: activeTab === 'ingredientes'}" @click="activeTab='ingredientes'">🥄 Ingredientes</div>
+            <div class="tab" :class="{active: activeTab === 'reporte'}" @click="activeTab='reporte'">📊 Reporte completo</div>
+        </div>
+
+        <!-- SECCIÓN PASTELES -->
+        <div v-if="activeTab === 'pasteles'">
+            <div class="flex-between">
+                <h2>🎂 Lista de pasteles</h2>
+                <button @click="nuevoPastel">+ Nuevo pastel</button>
+            </div>
+            <div class="grid-2">
+                <!-- Lista de pasteles -->
+                <div>
+                    <div v-for="pastel in pasteles" :key="pastel.id" class="card">
+                        <h3>{{ pastel.nombre }}</h3>
+                        <p>{{ pastel.descripcion || 'Sin descripción' }}</p>
+                        <div class="actions">
+                            <button @click="editarPastel(pastel.id)">✏️ Editar</button>
+                            <button class="danger" @click="eliminarPastel(pastel.id)">🗑️ Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulario de pastel (crear/editar) -->
+                <div class="card" v-if="formPastelVisible">
+                    <h3>{{ editandoPastel ? 'Editar Pastel' : 'Nuevo Pastel' }}</h3>
+                    <input v-model="pastelForm.nombre" placeholder="Nombre del pastel *">
+                    <textarea v-model="pastelForm.descripcion" placeholder="Descripción"></textarea>
+                    
+                    <h4>🍫 Ingredientes</h4>
+                    <div v-for="(item, idx) in pastelForm.ingredientes" :key="idx" class="ingredient-row">
+                        <select v-model="item.id">
+                            <option :value="null">-- Seleccionar --</option>
+                            <option v-for="ing in ingredientes" :value="ing.id">{{ ing.nombre }} ({{ ing.unidad }})</option>
+                        </select>
+                        <input v-model="item.cantidad" placeholder="Cantidad ej: 200">
+                        <button class="secondary" @click="eliminarIngredienteForm(idx)">❌</button>
+                    </div>
+                    <button class="secondary" @click="agregarIngredienteForm">+ Agregar ingrediente</button>
+                    <div style="margin-top: 20px;">
+                        <button @click="guardarPastel">💾 Guardar</button>
+                        <button class="secondary" @click="cancelarFormPastel">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN INGREDIENTES -->
+        <div v-if="activeTab === 'ingredientes'">
+            <div class="flex-between">
+                <h2>🥚 Ingredientes</h2>
+                <button @click="nuevoIngrediente">+ Nuevo ingrediente</button>
+            </div>
+            <div class="card" v-if="formIngredienteVisible">
+                <h3>{{ editandoIngrediente ? 'Editar' : 'Nuevo' }} Ingrediente</h3>
+                <input v-model="ingredienteForm.nombre" placeholder="Nombre *">
+                <input v-model="ingredienteForm.unidad" placeholder="Unidad (gramos, unidades, etc) *">
+                <button @click="guardarIngrediente">Guardar</button>
+                <button class="secondary" @click="cancelarFormIngrediente">Cancelar</button>
+            </div>
+            <table>
+                <thead><tr><th>Nombre</th><th>Unidad</th><th>Acciones</th></tr></thead>
+                <tbody>
+                    <tr v-for="ing in ingredientes" :key="ing.id">
+                        <td>{{ ing.nombre }}</td>
+                        <td>{{ ing.unidad }}</td>
+                        <td class="actions">
+                            <button @click="editarIngrediente(ing)">Editar</button>
+                            <button class="danger" @click="eliminarIngrediente(ing.id)">Eliminar</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SECCIÓN REPORTE -->
+        <div v-if="activeTab === 'reporte'">
+            <h2>📑 Reporte: Pasteles con sus ingredientes</h2>
+            <div v-for="pastel in reporte" :key="pastel.id" class="card">
+                <h3>{{ pastel.nombre }}</h3>
+                <p>{{ pastel.descripcion }}</p>
+                <ul>
+                    <li v-for="ing in pastel.ingredientes" :key="ing.id">
+                        {{ ing.nombre }} - {{ ing.cantidad }} {{ ing.unidad }}
+                    </li>
+                    <li v-if="pastel.ingredientes.length === 0">Sin ingredientes asignados</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const { ref, onMounted } = Vue;
+
+const App = {
+    setup() {
+        const activeTab = ref('pasteles');
+        const pasteles = ref([]);
+        const ingredientes = ref([]);
+        const reporte = ref([]);
+        
+        // Forms
+        const formPastelVisible = ref(false);
+        const editandoPastel = ref(false);
+        const pastelForm = ref({ nombre: '', descripcion: '', ingredientes: [] });
+        let currentPastelId = null;
+
+        const formIngredienteVisible = ref(false);
+        const editandoIngrediente = ref(false);
+        const ingredienteForm = ref({ nombre: '', unidad: '' });
+        let currentIngredienteId = null;
+
+        const API_BASE = '/api';
+
+        // Helpers
+        const showError = (msg) => alert('❌ Error: ' + msg);
+        
+        // Cargar datos
+        const cargarPasteles = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/pasteles`);
+                pasteles.value = res.data;
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const cargarIngredientes = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/ingredientes`);
+                ingredientes.value = res.data;
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const cargarReporte = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/reporte`);
+                reporte.value = res.data;
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        
+        // Pasteles
+        const nuevoPastel = () => {
+            pastelForm.value = { nombre: '', descripcion: '', ingredientes: [] };
+            editandoPastel.value = false;
+            currentPastelId = null;
+            formPastelVisible.value = true;
+        };
+        const editarPastel = async (id) => {
+            try {
+                const res = await axios.get(`${API_BASE}/pasteles/${id}`);
+                const data = res.data;
+                pastelForm.value = {
+                    nombre: data.nombre,
+                    descripcion: data.descripcion || '',
+                    ingredientes: data.ingredientes.map(i => ({ id: i.id, cantidad: i.cantidad }))
+                };
+                if (pastelForm.value.ingredientes.length === 0) pastelForm.value.ingredientes.push({ id: null, cantidad: '' });
+                editandoPastel.value = true;
+                currentPastelId = id;
+                formPastelVisible.value = true;
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const guardarPastel = async () => {
+            if (!pastelForm.value.nombre.trim()) return showError('El nombre es obligatorio');
+            const payload = {
+                nombre: pastelForm.value.nombre,
+                descripcion: pastelForm.value.descripcion,
+                ingredientes: pastelForm.value.ingredientes.filter(i => i.id && i.cantidad)
+            };
+            try {
+                if (editandoPastel.value) {
+                    await axios.put(`${API_BASE}/pasteles/${currentPastelId}`, payload);
+                } else {
+                    await axios.post(`${API_BASE}/pasteles`, payload);
+                }
+                cancelarFormPastel();
+                cargarPasteles();
+                cargarReporte();
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const eliminarPastel = async (id) => {
+            if (!confirm('¿Eliminar este pastel? Se borrarán también sus relaciones.')) return;
+            try {
+                await axios.delete(`${API_BASE}/pasteles/${id}`);
+                cargarPasteles();
+                cargarReporte();
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const cancelarFormPastel = () => {
+            formPastelVisible.value = false;
+            pastelForm.value = { nombre: '', descripcion: '', ingredientes: [] };
+        };
+        const agregarIngredienteForm = () => {
+            pastelForm.value.ingredientes.push({ id: null, cantidad: '' });
+        };
+        const eliminarIngredienteForm = (idx) => {
+            pastelForm.value.ingredientes.splice(idx, 1);
+        };
+        
+        // Ingredientes CRUD
+        const nuevoIngrediente = () => {
+            ingredienteForm.value = { nombre: '', unidad: '' };
+            editandoIngrediente.value = false;
+            currentIngredienteId = null;
+            formIngredienteVisible.value = true;
+        };
+        const editarIngrediente = (ing) => {
+            ingredienteForm.value = { nombre: ing.nombre, unidad: ing.unidad };
+            currentIngredienteId = ing.id;
+            editandoIngrediente.value = true;
+            formIngredienteVisible.value = true;
+        };
+        const guardarIngrediente = async () => {
+            if (!ingredienteForm.value.nombre || !ingredienteForm.value.unidad) return showError('Complete nombre y unidad');
+            try {
+                if (editandoIngrediente.value) {
+                    await axios.put(`${API_BASE}/ingredientes/${currentIngredienteId}`, ingredienteForm.value);
+                } else {
+                    await axios.post(`${API_BASE}/ingredientes`, ingredienteForm.value);
+                }
+                cancelarFormIngrediente();
+                cargarIngredientes();
+                cargarReporte();  // actualizar reporte por si cambió nombres
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const eliminarIngrediente = async (id) => {
+            if (!confirm('¿Eliminar ingrediente? Si está asignado a algún pastel no se podrá.')) return;
+            try {
+                await axios.delete(`${API_BASE}/ingredientes/${id}`);
+                cargarIngredientes();
+                cargarReporte();
+                // Si el pastel actual tiene ese ingrediente, lo limpiamos visualmente, pero mejor recargar pasteles si está abierto
+                if (formPastelVisible.value) {
+                    // Recargamos la lista de ingredientes y opcionalmente el pastel actual, pero no es crítico.
+                }
+            } catch(e) { showError(e.response?.data?.error || e.message); }
+        };
+        const cancelarFormIngrediente = () => {
+            formIngredienteVisible.value = false;
+            ingredienteForm.value = { nombre: '', unidad: '' };
+        };
+        
+        onMounted(() => {
+            cargarPasteles();
+            cargarIngredientes();
+            cargarReporte();
+        });
+        
+        return {
+            activeTab,
+            pasteles, ingredientes, reporte,
+            formPastelVisible, editandoPastel, pastelForm,
+            formIngredienteVisible, editandoIngrediente, ingredienteForm,
+            nuevoPastel, editarPastel, guardarPastel, eliminarPastel, cancelarFormPastel, agregarIngredienteForm, eliminarIngredienteForm,
+            nuevoIngrediente, editarIngrediente, guardarIngrediente, eliminarIngrediente, cancelarFormIngrediente,
+        };
+    }
+};
+
+Vue.createApp(App).mount('#app');
+</script>
+</body>
+</html>
